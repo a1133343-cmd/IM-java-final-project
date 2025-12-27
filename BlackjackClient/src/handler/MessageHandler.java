@@ -94,8 +94,13 @@ public class MessageHandler {
 
                 case Protocol.CHAT:
                     if (parts.length > 1) {
+                        // 拼接所有訊息部分，避免 | 符號導致訊息被截斷
+                        StringBuilder message = new StringBuilder(parts[1]);
+                        for (int i = 2; i < parts.length; i++) {
+                            message.append("|").append(parts[i]);
+                        }
                         JTextArea chatArea = client.getGamePanel().getChatArea();
-                        chatArea.append(parts[1] + "\n");
+                        chatArea.append(message.toString() + "\n");
                         chatArea.setCaretPosition(chatArea.getDocument().getLength());
                     }
                     break;

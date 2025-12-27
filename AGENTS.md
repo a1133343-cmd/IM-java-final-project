@@ -63,9 +63,10 @@ java -cp out Main
 - `JOIN_ROOM|roomId` - 加入房間
 - `START` - 開始遊戲 (莊家限定)
 - `HIT` / `STAND` - 遊戲行動
-- `CHAT|message` - 聊天
+- `CHAT|message` - 聊天（訊息內容可包含 `|` 符號，處理時需將所有參數重新組合）
 - `LEAVE` - 離開房間
 - `USE_FUNC_CARD|cardId|targetUid` - 使用功能牌
+- `SKIP_FUNC_CARD` - 跳過使用功能牌
 
 **Server → Client:**
 - `LOGIN_OK` - 登入成功
