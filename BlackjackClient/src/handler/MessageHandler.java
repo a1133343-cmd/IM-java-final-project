@@ -145,6 +145,23 @@ public class MessageHandler {
                     client.getGamePanel().setFunctionCardsEnabled(false);
                     break;
 
+                case Protocol.GAME_WIN:
+                    // 遊戲勝利通知
+                    if (parts.length > 1) {
+                        String winnerName = parts[1];
+                        String winMessage;
+                        if (winnerName.equals(client.getPlayerName())) {
+                            winMessage = "🎉 恭喜！你是最後的贏家！";
+                        } else {
+                            winMessage = "🏆 遊戲結束！\n贏家是：" + winnerName;
+                        }
+                        JOptionPane.showMessageDialog(client, winMessage, "遊戲勝利", JOptionPane.INFORMATION_MESSAGE);
+                        client.getGamePanel().getStatusLabel().setText("遊戲結束，等待新一局開始...");
+                        client.getGamePanel().getStatusLabel().setForeground(Color.CYAN);
+                        client.checkStartButtonVisibility();
+                    }
+                    break;
+
                 case Protocol.ERROR:
                     JOptionPane.showMessageDialog(client, parts[1]);
                     break;

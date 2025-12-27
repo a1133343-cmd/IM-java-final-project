@@ -459,30 +459,64 @@ public class GameRoom {
             }
         }
 
-        // 淘汰血量歸零的玩家
-        List<PlayerInfo> deadPlayers = new ArrayList<>();
-        players.removeIf(p -> {
-            if (p.getHp() <= 0) {
-                deadPlayers.add(p);
-                return true;
+        // 血量歸零的玩家轉為旁觀者（不移除）
+        for (PlayerInfo p : players) {
+            if (p.getHp() <= 0 && !p.isSpectator()) {
+                p.setSpectator(true);
+                p.send(Protocol.MSG + Protocol.DELIMITER + "你的血量歸零，變成旁觀者！");
             }
-            return false;
-        });
-
-        for (PlayerInfo dead : deadPlayers) {
-            dead.send(Protocol.MSG + Protocol.DELIMITER + "你的血量歸零，被淘汰了！");
-            dead.send(Protocol.LOBBY);
         }
+
+        // 計算非旁觀者玩家數量
+        long activeCount = players.stream().filter(p -> !p.isSpectator()).count();
 
         gameInProgress = false;
 
-        if (players.size() == 1) {
+        if (activeCount == 1) {
+            // 只剩一名玩家獲勝
+            PlayerInfo winner = players.stream().filter(p -> !p.isSpectator()).findFirst().orElse(null);
+            if (winner != null) {
+                broadcast(Protocol.GAME_WIN + Protocol.DELIMITER + winner.getName());
+                broadcast(Protocol.MSG + Protocol.DELIMITER + "🎉 遊戲結束！" + winner.getName() + " 獲得勝利！");
+
+                // 重置所有玩家狀態，準備新遊戲
+                for (PlayerInfo p : players) {
+                    p.setSpectator(false);
+                    p.setHp(15);
+                    p.setReady(true);
+                    p.clearFunctionCards(); // 清空功能牌，下一局重發
+                }
+
+                dealerIndex = 0;
+                players.get(0).setDealer(true);
+                broadcast(Protocol.HP_UPDATE + Protocol.DELIMITER + getHpString());
+                broadcast(Protocol.MSG + Protocol.DELIMITER + "所有玩家 HP 已重置，等待莊家開始新一局...");
+            }
+        } else if (activeCount == 0) {
+            // 極端情況：所有人同時歸零（平局）
+            broadcast(Protocol.MSG + Protocol.DELIMITER + "所有玩家同時被淘汰，平局！HP 已重置。");
+            for (PlayerInfo p : players) {
+                p.setSpectator(false);
+                p.setHp(15);
+                p.setReady(true);
+                p.clearFunctionCards();
+            }
             dealerIndex = 0;
-            players.get(0).setDealer(true);
-            players.get(0).setReady(true);
+            if (!players.isEmpty()) {
+                players.get(0).setDealer(true);
+            }
             broadcast(Protocol.HP_UPDATE + Protocol.DELIMITER + getHpString());
-        } else if (players.size() > 1) {
-            dealerIndex = (dealerIndex + 1) % players.size();
+        } else if (activeCount > 1) {
+            // 還有多名玩家存活，正常輪換莊家
+            // 找到下一個非旁觀者作為莊家
+            int nextDealer = (dealerIndex + 1) % players.size();
+            int searchCount = 0;
+            while (players.get(nextDealer).isSpectator() && searchCount < players.size()) {
+                nextDealer = (nextDealer + 1) % players.size();
+                searchCount++;
+            }
+            dealerIndex = nextDealer;
+
             for (int i = 0; i < players.size(); i++) {
                 players.get(i).setDealer(i == dealerIndex);
             }
