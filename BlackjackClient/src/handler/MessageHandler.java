@@ -83,8 +83,8 @@ public class MessageHandler {
                     client.getGamePanel().getStatusLabel().setForeground(Color.WHITE);
                     client.getGamePanel().lockButtons();
                     client.checkStartButtonVisibility();
-                    // 回合結束，允許使用功能牌
-                    client.getGamePanel().setFunctionCardsEnabled(true);
+                    // 回合結束，禁用功能牌（等待進入機會卡階段時才啟用）
+                    client.getGamePanel().setFunctionCardsEnabled(false);
                     break;
 
                 case Protocol.HP_UPDATE:
