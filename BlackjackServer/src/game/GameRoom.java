@@ -61,9 +61,12 @@ public class GameRoom {
                 broadcast(Protocol.MSG + Protocol.DELIMITER + "玩家 " + handler.getName() + " 加入 (" + players.size()
                         + "/5)");
                 // 給新加入的玩家發功能牌（如果房間已經有玩家有功能牌，表示不是第一局）
+                // 非第一局加入的玩家需要確認戰績才能開始
                 if (roomId != null && players.size() > 1 && !players.get(0).getFunctionCards().isEmpty()) {
+                    newPlayer.setReady(false); // 非第一局，需要確認才能開始
                     dealFunctionCardsToPlayer(newPlayer);
                     sendFunctionCardsTo(newPlayer);
+                    handler.send(Protocol.MSG + Protocol.DELIMITER + "請確認戰績以準備下一局");
                 }
             }
 
@@ -74,24 +77,193 @@ public class GameRoom {
     }
 
     public void removePlayer(ClientHandler handler) {
-        players.removeIf(p -> p.getHandler() == handler);
+        // 1. 找到被移除玩家的索引
+        int removeIndex = -1;
+        PlayerInfo removedPlayer = null;
+        for (int i = 0; i < players.size(); i++) {
+            if (players.get(i).getHandler() == handler) {
+                removeIndex = i;
+                removedPlayer = players.get(i);
+                break;
+            }
+        }
+
+        if (removeIndex == -1) {
+            return; // 玩家不存在
+        }
+
+        // 記錄移除前的狀態
+        boolean wasDealer = removedPlayer.isDealer();
+        boolean wasSpectator = removedPlayer.isSpectator();
+        boolean wasCurrentTurn = (gameInProgress && !functionCardPhase && removeIndex == turnIndex);
+        boolean wasFunctionCardTurn = (functionCardPhase && removeIndex == functionCardTurnIndex);
+
+        // 2. 移除玩家
+        players.remove(removeIndex);
         broadcast(Protocol.MSG + Protocol.DELIMITER + "玩家 " + handler.getName() + " 離開");
 
-        if (!players.isEmpty()) {
+        // 如果房間空了，重置狀態
+        if (players.isEmpty()) {
+            gameInProgress = false;
+            functionCardPhase = false;
+            return;
+        }
+
+        // 3. 調整 dealerIndex
+        if (removeIndex < dealerIndex) {
+            dealerIndex--;
+        } else if (removeIndex == dealerIndex) {
+            // 莊家離開，dealerIndex 保持但可能需要調整範圍
             if (dealerIndex >= players.size()) {
                 dealerIndex = 0;
             }
-            for (int i = 0; i < players.size(); i++) {
-                players.get(i).setDealer(i == dealerIndex);
+        }
+        if (dealerIndex >= players.size()) {
+            dealerIndex = 0;
+        }
+
+        // 4. 調整 turnIndex（遊戲行動階段）
+        if (gameInProgress && !functionCardPhase) {
+            if (removeIndex < turnIndex) {
+                turnIndex--;
+            } else if (removeIndex == turnIndex) {
+                // 當前回合玩家離開，turnIndex 保持（指向原下一位）
+                // 但需要檢查範圍
+                if (turnIndex >= players.size()) {
+                    turnIndex = 0;
+                }
             }
+            if (turnIndex >= players.size()) {
+                turnIndex = 0;
+            }
+        }
+
+        // 5. 調整 functionCardTurnIndex（機會卡階段）
+        if (functionCardPhase) {
+            if (removeIndex < functionCardTurnIndex) {
+                functionCardTurnIndex--;
+            } else if (removeIndex == functionCardTurnIndex) {
+                // 當前機會卡回合玩家離開
+                if (functionCardTurnIndex >= players.size()) {
+                    functionCardTurnIndex = 0;
+                }
+            }
+            if (functionCardTurnIndex >= players.size()) {
+                functionCardTurnIndex = 0;
+            }
+        }
+
+        // 6. 重新設定莊家標記
+        for (int i = 0; i < players.size(); i++) {
+            players.get(i).setDealer(i == dealerIndex);
         }
 
         broadcast(Protocol.HP_UPDATE + Protocol.DELIMITER + getHpString());
 
-        if (gameInProgress && players.size() < 1 && roomId != null) {
-            gameInProgress = false;
-            broadcast(Protocol.MSG + Protocol.DELIMITER + "人數不足，遊戲結束");
+        // 7. 處理遊戲中的狀態變化
+        if (gameInProgress) {
+            // 計算還有幾個非旁觀者
+            int activeCount = 0;
+            for (PlayerInfo p : players) {
+                if (!p.isSpectator()) {
+                    activeCount++;
+                }
+            }
+
+            if (activeCount < 1) {
+                // 沒有活躍玩家了，結束遊戲
+                gameInProgress = false;
+                functionCardPhase = false;
+                broadcast(Protocol.MSG + Protocol.DELIMITER + "人數不足，遊戲結束");
+            } else if (activeCount == 1 && roomId != null) {
+                // 只剩一人，判定勝利
+                gameInProgress = false;
+                functionCardPhase = false;
+                handleSinglePlayerVictory();
+            } else {
+                // 還有多人，繼續遊戲
+                if (wasFunctionCardTurn && !wasSpectator) {
+                    // 機會卡階段被移除的玩家是當前輪次，需要推進
+                    advanceFunctionCardPhaseAfterLeave();
+                } else if (wasCurrentTurn && !wasSpectator) {
+                    // 遊戲行動階段被移除的玩家是當前輪次
+                    checkAndNotifyTurn();
+                } else {
+                    // 只更新狀態
+                    sendStateToAll();
+                }
+            }
         }
+    }
+
+    /**
+     * 處理只剩一名玩家時的勝利邏輯
+     */
+    private void handleSinglePlayerVictory() {
+        PlayerInfo winner = null;
+        for (PlayerInfo p : players) {
+            if (!p.isSpectator()) {
+                winner = p;
+                break;
+            }
+        }
+
+        if (winner != null) {
+            broadcast(Protocol.GAME_WIN + Protocol.DELIMITER + winner.getName());
+            broadcast(Protocol.MSG + Protocol.DELIMITER + "🎉 遊戲結束！" + winner.getName() + " 獲得勝利！");
+
+            // 重置所有玩家狀態，準備新遊戲
+            for (PlayerInfo p : players) {
+                p.setSpectator(false);
+                p.setHp(15);
+                p.setReady(true);
+                p.clearFunctionCards();
+            }
+
+            dealerIndex = 0;
+            if (!players.isEmpty()) {
+                players.get(0).setDealer(true);
+            }
+            broadcast(Protocol.HP_UPDATE + Protocol.DELIMITER + getHpString());
+            broadcast(Protocol.MSG + Protocol.DELIMITER + "所有玩家 HP 已重置，等待莊家開始新一局...");
+        }
+    }
+
+    /**
+     * 玩家離開後推進機會卡階段
+     */
+    private void advanceFunctionCardPhaseAfterLeave() {
+        // 檢查是否所有人都確認過了
+        if (functionCardTurnIndex == dealerIndex) {
+            // 可能需要檢查莊家是否也確認過了
+            PlayerInfo dealer = players.get(dealerIndex);
+            if (dealer.hasConfirmedFunctionCardPhase() || dealer.isSpectator()) {
+                endFunctionCardPhase();
+                return;
+            }
+        }
+
+        // 找到下一個未確認的玩家
+        int startIndex = functionCardTurnIndex;
+        int loopCount = 0;
+        while (loopCount < players.size()) {
+            PlayerInfo current = players.get(functionCardTurnIndex);
+            if (!current.hasConfirmedFunctionCardPhase() && !current.isSpectator()) {
+                notifyFunctionCardPhaseTurn();
+                return;
+            }
+            functionCardTurnIndex = (functionCardTurnIndex + 1) % players.size();
+            loopCount++;
+
+            // 繞回莊家表示所有人都確認過了
+            if (functionCardTurnIndex == dealerIndex && loopCount > 0) {
+                endFunctionCardPhase();
+                return;
+            }
+        }
+
+        // 迴圈結束還沒 return，結束機會卡階段
+        endFunctionCardPhase();
     }
 
     // ==================== 遊戲控制 ====================
