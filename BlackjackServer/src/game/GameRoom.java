@@ -9,7 +9,7 @@ public class GameRoom {
     private final String roomId;
     private final List<PlayerInfo> players = new ArrayList<>();
     private final Map<String, GameRoom> roomRegistry;
-    
+
     private Deck deck;
     private int dealerIndex = 0;
     private int turnIndex = 0;
@@ -42,12 +42,27 @@ public class GameRoom {
     public void addPlayer(ClientHandler handler) {
         if (!isFull()) {
             PlayerInfo newPlayer = new PlayerInfo(handler);
-            if (players.isEmpty()) {
-                newPlayer.setDealer(true);
-                dealerIndex = 0;
+
+            // 如果遊戲正在進行中，設定為旁觀者
+            if (gameInProgress) {
+                newPlayer.setSpectator(true);
+                players.add(newPlayer);
+                broadcast(Protocol.MSG + Protocol.DELIMITER + "玩家 " + handler.getName() + " 以旁觀者身份加入 (" + players.size()
+                        + "/5)");
+                handler.send(Protocol.MSG + Protocol.DELIMITER + "遊戲進行中，你將以旁觀者身份觀看，下一局開始後才能參與");
+                // 發送當前遊戲狀態給旁觀者
+                sendStateToAll();
+            } else {
+                // 遊戲未開始，正常加入
+                if (players.isEmpty()) {
+                    newPlayer.setDealer(true);
+                    dealerIndex = 0;
+                }
+                players.add(newPlayer);
+                broadcast(Protocol.MSG + Protocol.DELIMITER + "玩家 " + handler.getName() + " 加入 (" + players.size()
+                        + "/5)");
             }
-            players.add(newPlayer);
-            broadcast(Protocol.MSG + Protocol.DELIMITER + "玩家 " + handler.getName() + " 加入 (" + players.size() + "/5)");
+
             broadcast(Protocol.HP_UPDATE + Protocol.DELIMITER + getHpString());
         }
     }
@@ -77,12 +92,28 @@ public class GameRoom {
 
     public void handlePlayerReady(ClientHandler handler) {
         boolean allReady = true;
+        boolean isSpectator = false;
+
         for (PlayerInfo p : players) {
             if (p.getHandler() == handler) {
-                p.setReady(true);
-                broadcast(Protocol.MSG + Protocol.DELIMITER + p.getName() + " 已確認戰績");
+                if (p.isSpectator()) {
+                    handler.send(Protocol.MSG + Protocol.DELIMITER + "旁觀者無需確認戰績");
+                    isSpectator = true;
+                    break;
+                } else {
+                    p.setReady(true);
+                    broadcast(Protocol.MSG + Protocol.DELIMITER + p.getName() + " 已確認戰績");
+                }
             }
-            if (!p.isReady()) {
+        }
+
+        if (isSpectator) {
+            return;
+        }
+
+        for (PlayerInfo p : players) {
+            // 旁觀者不計入 ready 檢查
+            if (!p.isSpectator() && !p.isReady()) {
                 allReady = false;
             }
         }
@@ -93,7 +124,8 @@ public class GameRoom {
     }
 
     public void tryStartGame(ClientHandler requestor) {
-        if (players.isEmpty()) return;
+        if (players.isEmpty())
+            return;
 
         // PVE 模式
         if (roomId == null) {
@@ -108,18 +140,21 @@ public class GameRoom {
         if (players.get(dealerIndex).getHandler() == requestor) {
             List<String> notReadyList = new ArrayList<>();
             for (PlayerInfo p : players) {
-                if (!p.isReady()) {
+                // 旁觀者不需要確認 ready
+                if (!p.isSpectator() && !p.isReady()) {
                     notReadyList.add(p.getName());
                 }
             }
 
             if (!notReadyList.isEmpty()) {
-                requestor.send(Protocol.ERROR + Protocol.DELIMITER + "無法開始！以下玩家尚未確認戰績: " + String.join(", ", notReadyList));
+                requestor.send(
+                        Protocol.ERROR + Protocol.DELIMITER + "無法開始！以下玩家尚未確認戰績: " + String.join(", ", notReadyList));
             } else {
                 startGame();
             }
         } else {
-            requestor.send(Protocol.ERROR + Protocol.DELIMITER + "只有當前莊家 (" + players.get(dealerIndex).getName() + ") 可以開始");
+            requestor.send(
+                    Protocol.ERROR + Protocol.DELIMITER + "只有當前莊家 (" + players.get(dealerIndex).getName() + ") 可以開始");
         }
     }
 
@@ -145,6 +180,12 @@ public class GameRoom {
 
         for (int i = 0; i < players.size(); i++) {
             PlayerInfo p = players.get(i);
+
+            // 旁觀者不發牌
+            if (p.isSpectator()) {
+                continue;
+            }
+
             p.resetHand();
             p.setDealer(i == dealerIndex);
             p.getHand().add(deck.draw());
@@ -182,8 +223,23 @@ public class GameRoom {
     // ==================== 遊戲行動 ====================
 
     public void handleGameAction(ClientHandler handler, String action) {
-        if (!gameInProgress) return;
-        
+        if (!gameInProgress)
+            return;
+
+        // 檢查玩家是否為旁觀者
+        PlayerInfo actionPlayer = null;
+        for (PlayerInfo p : players) {
+            if (p.getHandler() == handler) {
+                actionPlayer = p;
+                break;
+            }
+        }
+
+        if (actionPlayer != null && actionPlayer.isSpectator()) {
+            handler.send(Protocol.MSG + Protocol.DELIMITER + "旁觀者無法進行遊戲操作");
+            return;
+        }
+
         PlayerInfo currentP = players.get(turnIndex);
 
         // PVE 模式
@@ -221,10 +277,10 @@ public class GameRoom {
         if (action.equals(Protocol.HIT)) {
             player.getHand().add(deck.draw());
             if (player.getHand().isBust()) {
-                player.send(Protocol.GAME_OVER + Protocol.DELIMITER 
-                    + cpu.getHand().toString(true, false) + Protocol.DELIMITER 
-                    + player.getHand().toString(true, false) + Protocol.DELIMITER 
-                    + "你爆牌了");
+                player.send(Protocol.GAME_OVER + Protocol.DELIMITER
+                        + cpu.getHand().toString(true, false) + Protocol.DELIMITER
+                        + player.getHand().toString(true, false) + Protocol.DELIMITER
+                        + "你爆牌了");
                 gameInProgress = false;
             } else {
                 sendStateToAll();
@@ -234,11 +290,11 @@ public class GameRoom {
             while (cpu.getHand().bestValue() < 17) {
                 cpu.getHand().add(deck.draw());
             }
-            
+
             int pVal = player.getHand().bestValue();
             int cVal = cpu.getHand().bestValue();
             boolean cpuBust = cpu.getHand().isBust();
-            
+
             String result;
             if (cpuBust) {
                 result = "電腦爆牌，你贏了";
@@ -250,13 +306,13 @@ public class GameRoom {
                 result = "平手";
             }
 
-            player.send(Protocol.GAME_OVER + Protocol.DELIMITER 
-                + cpu.getHand().toString(true, false) + Protocol.DELIMITER 
-                + player.getHand().toString(true, false) + Protocol.DELIMITER 
-                + result);
+            player.send(Protocol.GAME_OVER + Protocol.DELIMITER
+                    + cpu.getHand().toString(true, false) + Protocol.DELIMITER
+                    + player.getHand().toString(true, false) + Protocol.DELIMITER
+                    + result);
             gameInProgress = false;
         }
-        
+
         if (!gameInProgress) {
             player.send(Protocol.HP_UPDATE + Protocol.DELIMITER + getHpString());
         }
@@ -276,8 +332,9 @@ public class GameRoom {
     private void checkAndNotifyTurn() {
         PlayerInfo current = players.get(turnIndex);
         int checkCount = 0;
-        
-        while (current.hasStayed() || current.getHand().isBust()) {
+
+        // 跳過已經停牌、爆牌或旁觀者的玩家
+        while (current.hasStayed() || current.getHand().isBust() || current.isSpectator()) {
             if (current.isDealer()) {
                 endRound();
                 return;
@@ -326,9 +383,16 @@ public class GameRoom {
         }
 
         for (int i = 0; i < players.size(); i++) {
-            if (i == dealerIndex) continue;
-            
+            if (i == dealerIndex)
+                continue;
+
             PlayerInfo p = players.get(i);
+
+            // 旁觀者不參與結算
+            if (p.isSpectator()) {
+                continue;
+            }
+
             int pScore = p.getHand().bestValue();
 
             if (p.getHand().isBust()) {
@@ -355,11 +419,17 @@ public class GameRoom {
         for (PlayerInfo p : players) {
             String dHand = dealer.getHand().toString(true, false);
             String mHand = p.getHand().toString(true, false);
-            p.send(Protocol.GAME_OVER + Protocol.DELIMITER + dHand + Protocol.DELIMITER + mHand + Protocol.DELIMITER + sb.toString());
+            p.send(Protocol.GAME_OVER + Protocol.DELIMITER + dHand + Protocol.DELIMITER + mHand + Protocol.DELIMITER
+                    + sb.toString());
         }
 
         for (PlayerInfo p : players) {
             p.setReady(false);
+            // 將旁觀者轉為正常玩家，讓他們可以參與下一局
+            if (p.isSpectator()) {
+                p.setSpectator(false);
+                p.send(Protocol.MSG + Protocol.DELIMITER + "下一局你將可以參與遊戲");
+            }
         }
 
         // 淘汰血量歸零的玩家
@@ -412,10 +482,11 @@ public class GameRoom {
         for (PlayerInfo p : players) {
             if (p.getHandler() != null) {
                 sb.append(p.getName())
-                  .append(p.isDealer() ? "(莊)" : "")
-                  .append(":")
-                  .append(p.getHp())
-                  .append("HP,");
+                        .append(p.isDealer() ? "(莊)" : "")
+                        .append(p.isSpectator() ? "(旁觀)" : "")
+                        .append(":")
+                        .append(p.getHp())
+                        .append("HP,");
             }
         }
         return sb.toString();
@@ -426,10 +497,10 @@ public class GameRoom {
         if (roomId == null) {
             PlayerInfo player = players.get(0);
             PlayerInfo cpu = players.get(1);
-            player.send(Protocol.STATE + Protocol.DELIMITER + "PLAYING" + Protocol.DELIMITER 
-                + cpu.getHand().toString(false, true) + Protocol.DELIMITER 
-                + player.getHand().toString(true, false) + Protocol.DELIMITER 
-                + "CPU:??,YOU:" + player.getHp());
+            player.send(Protocol.STATE + Protocol.DELIMITER + "PLAYING" + Protocol.DELIMITER
+                    + cpu.getHand().toString(false, true) + Protocol.DELIMITER
+                    + player.getHand().toString(true, false) + Protocol.DELIMITER
+                    + "CPU:??,YOU:" + player.getHp());
             return;
         }
 
@@ -439,8 +510,8 @@ public class GameRoom {
         StringBuilder normalListSb = new StringBuilder();
         for (PlayerInfo p : players) {
             normalListSb.append(p.getName())
-                        .append(p.isDealer() ? "(莊)" : "")
-                        .append(":").append(p.getHp()).append("HP,");
+                    .append(p.isDealer() ? "(莊)" : "")
+                    .append(":").append(p.getHp()).append("HP,");
         }
         String normalListStr = normalListSb.toString();
 
@@ -448,9 +519,9 @@ public class GameRoom {
         StringBuilder dealerListSb = new StringBuilder();
         for (PlayerInfo p : players) {
             dealerListSb.append(p.getName())
-                        .append(p.isDealer() ? "(莊)" : "")
-                        .append(":").append(p.getHp()).append("HP");
-            
+                    .append(p.isDealer() ? "(莊)" : "")
+                    .append(":").append(p.getHp()).append("HP");
+
             if (!p.isDealer()) {
                 dealerListSb.append(p.getHand().formatForDisplay());
             }
@@ -459,14 +530,24 @@ public class GameRoom {
         String dealerListStr = dealerListSb.toString();
 
         for (PlayerInfo p : players) {
-            String dHand = (p == dealer) 
-                ? dealer.getHand().toString(true, false) 
-                : dealer.getHand().toString(false, true);
-            String mHand = p.getHand().toString(true, false);
-            String listData = (p == dealer) ? dealerListStr : normalListStr;
+            // 旁觀者特殊處理：只能看到莊家的第一張牌，自己手牌區為空
+            if (p.isSpectator()) {
+                String dHand = dealer.getHand().toString(false, true); // 只顯示莊家第一張牌
+                String mHand = ""; // 旁觀者沒有手牌
+                String spectatorList = normalListStr + "(旁觀)";
+                p.send(Protocol.STATE + Protocol.DELIMITER + "PLAYING" + Protocol.DELIMITER
+                        + dHand + Protocol.DELIMITER + mHand + Protocol.DELIMITER + spectatorList);
+            } else {
+                // 正常玩家
+                String dHand = (p == dealer)
+                        ? dealer.getHand().toString(true, false)
+                        : dealer.getHand().toString(false, true);
+                String mHand = p.getHand().toString(true, false);
+                String listData = (p == dealer) ? dealerListStr : normalListStr;
 
-            p.send(Protocol.STATE + Protocol.DELIMITER + "PLAYING" + Protocol.DELIMITER 
-                + dHand + Protocol.DELIMITER + mHand + Protocol.DELIMITER + listData);
+                p.send(Protocol.STATE + Protocol.DELIMITER + "PLAYING" + Protocol.DELIMITER
+                        + dHand + Protocol.DELIMITER + mHand + Protocol.DELIMITER + listData);
+            }
         }
     }
 }

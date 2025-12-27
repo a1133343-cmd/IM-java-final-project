@@ -8,6 +8,7 @@ public class PlayerInfo {
     private boolean isDealer;
     private boolean hasStayed;
     private boolean isReady;
+    private boolean isSpectator;
 
     public PlayerInfo(ClientHandler handler) {
         this.handler = handler;
@@ -16,6 +17,7 @@ public class PlayerInfo {
         this.isDealer = false;
         this.hasStayed = false;
         this.isReady = true;
+        this.isSpectator = false;
     }
 
     public ClientHandler getHandler() {
@@ -76,12 +78,26 @@ public class PlayerInfo {
     public String getName() {
         return handler != null ? handler.getName() : "CPU";
     }
-    
+
     /**
      * 取得玩家 UID（用於伺服器內部識別）
      */
     public String getUid() {
         return handler != null ? handler.getUid() : "cpu";
+    }
+
+    /**
+     * 是否為旁觀者
+     */
+    public boolean isSpectator() {
+        return isSpectator;
+    }
+
+    /**
+     * 設定旁觀者狀態
+     */
+    public void setSpectator(boolean spectator) {
+        this.isSpectator = spectator;
     }
 
     /**
