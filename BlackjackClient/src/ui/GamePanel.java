@@ -70,16 +70,20 @@ public class GamePanel extends JPanel {
         JScrollPane listScroll = new JScrollPane(playerListArea);
         listScroll.setBorder(createTitledBorder("存活玩家"));
 
-        // 功能牌區域
-        functionCardArea = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 5));
+        // 功能牌區域 - 使用水平 BoxLayout 確保元件不會重疊
+        functionCardArea = new JPanel();
+        functionCardArea.setLayout(new FlowLayout(FlowLayout.CENTER, 8, 5));
         functionCardArea.setBackground(new Color(40, 40, 60));
         functionCardArea.setBorder(createTitledBorder("機會卡"));
-        functionCardArea.setPreferredSize(new Dimension(0, 120));
+        functionCardArea.setPreferredSize(new Dimension(0, 135)); // 增加高度以確保顯示完整
 
-        // 不使用機會卡按鈕
-        skipFunctionCardButton = new JButton("不使用機會卡");
-        skipFunctionCardButton.setBackground(new Color(100, 100, 100));
-        skipFunctionCardButton.setForeground(Color.WHITE);
+        // 不使用機會卡按鈕 - 使用 BasicButtonUI 確保顏色在 Windows 上正確顯示
+        skipFunctionCardButton = new JButton("跳過");
+        skipFunctionCardButton.setUI(new javax.swing.plaf.basic.BasicButtonUI());
+        skipFunctionCardButton.setBackground(new Color(200, 100, 100));
+        skipFunctionCardButton.setForeground(Color.BLACK);
+        skipFunctionCardButton.setFont(new Font("微軟正黑體", Font.BOLD, 14));
+        skipFunctionCardButton.setPreferredSize(new Dimension(80, 90));
         skipFunctionCardButton.setVisible(false);
         functionCardArea.add(skipFunctionCardButton);
 

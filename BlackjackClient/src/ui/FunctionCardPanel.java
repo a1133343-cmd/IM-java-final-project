@@ -56,9 +56,12 @@ public class FunctionCardPanel extends JPanel {
 
         // 使用按鈕
         useButton = new JButton("使用");
-        useButton.setBackground(new Color(100, 180, 100));
-        useButton.setForeground(Color.WHITE);
+        useButton.setBackground(new Color(70, 160, 70));
+        useButton.setForeground(new Color(30, 30, 30)); // 深色文字確保清晰
         useButton.setFocusPainted(false);
+        useButton.setOpaque(true);
+        useButton.setBorderPainted(true);
+        useButton.setFont(new Font("微軟正黑體", Font.BOLD, 12));
 
         add(nameLabel, BorderLayout.NORTH);
         add(descLabel, BorderLayout.CENTER);
