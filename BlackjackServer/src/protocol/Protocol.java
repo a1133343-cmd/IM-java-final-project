@@ -32,9 +32,12 @@ public final class Protocol {
 
     // === 功能牌相關 ===
     public static final String USE_FUNCTION_CARD = "USE_FUNC_CARD"; // Client: USE_FUNC_CARD|cardId|targetUid
+    public static final String SKIP_FUNCTION_CARD = "SKIP_FUNC_CARD"; // Client: 跳過使用機會卡
     public static final String FUNCTION_CARDS = "FUNC_CARDS"; // Server: FUNC_CARDS|id,type;id,type;...
     public static final String FUNCTION_CARD_USED = "FUNC_CARD_USED"; // Server:
                                                                       // FUNC_CARD_USED|userName|cardType|targetName
+    public static final String FUNCTION_CARD_PHASE = "FUNC_CARD_PHASE"; // Server: FUNC_CARD_PHASE|YOUR/WAIT
+    public static final String FUNCTION_CARD_PHASE_END = "FUNC_PHASE_END"; // Server: 機會卡階段結束
 
     // === 協定分隔符號 ===
     public static final String DELIMITER = "|";

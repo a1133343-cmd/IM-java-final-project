@@ -122,6 +122,12 @@ public class ClientHandler implements Runnable {
                 }
                 break;
 
+            case Protocol.SKIP_FUNCTION_CARD:
+                if (currentRoom != null) {
+                    currentRoom.handleSkipFunctionCard(this);
+                }
+                break;
+
             case Protocol.LEAVE:
                 leaveRoom();
                 break;

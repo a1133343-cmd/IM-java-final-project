@@ -124,6 +124,27 @@ public class MessageHandler {
                     }
                     break;
 
+                case Protocol.FUNCTION_CARD_PHASE:
+                    // 機會卡階段輪次通知
+                    if (parts.length > 1 && "YOUR".equals(parts[1])) {
+                        // 輪到自己選擇機會卡
+                        client.getGamePanel().getStatusLabel().setText("選擇使用機會卡或點「不使用機會卡」");
+                        client.getGamePanel().getStatusLabel().setForeground(Color.ORANGE);
+                        client.getGamePanel().setFunctionCardsEnabled(true);
+                        client.getGamePanel().getSkipFunctionCardButton().setVisible(true);
+                    } else {
+                        // 等待其他玩家
+                        client.getGamePanel().setFunctionCardsEnabled(false);
+                        client.getGamePanel().getSkipFunctionCardButton().setVisible(false);
+                    }
+                    break;
+
+                case Protocol.FUNCTION_CARD_PHASE_END:
+                    // 機會卡階段結束
+                    client.getGamePanel().getSkipFunctionCardButton().setVisible(false);
+                    client.getGamePanel().setFunctionCardsEnabled(false);
+                    break;
+
                 case Protocol.ERROR:
                     JOptionPane.showMessageDialog(client, parts[1]);
                     break;

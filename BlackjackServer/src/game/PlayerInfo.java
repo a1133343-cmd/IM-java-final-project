@@ -13,6 +13,8 @@ public class PlayerInfo {
     private boolean isReady;
     private boolean isSpectator;
     private List<FunctionCard> functionCards = new ArrayList<>();
+    private boolean usedFunctionCardThisRound = false; // 本輪是否已使用機會卡
+    private boolean confirmedFunctionCardPhase = false; // 是否已確認機會卡階段
 
     public PlayerInfo(ClientHandler handler) {
         this.handler = handler;
@@ -163,5 +165,31 @@ public class PlayerInfo {
             sb.append(functionCards.get(i).toProtocol());
         }
         return sb.toString();
+    }
+
+    // ==================== 機會卡階段狀態 ====================
+
+    public boolean hasUsedFunctionCardThisRound() {
+        return usedFunctionCardThisRound;
+    }
+
+    public void setUsedFunctionCardThisRound(boolean used) {
+        this.usedFunctionCardThisRound = used;
+    }
+
+    public boolean hasConfirmedFunctionCardPhase() {
+        return confirmedFunctionCardPhase;
+    }
+
+    public void setConfirmedFunctionCardPhase(boolean confirmed) {
+        this.confirmedFunctionCardPhase = confirmed;
+    }
+
+    /**
+     * 重置機會卡階段狀態（每輪開始時呼叫）
+     */
+    public void resetFunctionCardPhase() {
+        this.usedFunctionCardThisRound = false;
+        this.confirmedFunctionCardPhase = false;
     }
 }

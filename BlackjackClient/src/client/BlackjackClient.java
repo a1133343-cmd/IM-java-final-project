@@ -82,6 +82,9 @@ public class BlackjackClient extends JFrame {
 
         gamePanel.getLeaveButton().addActionListener(e -> networkClient.send(Protocol.LEAVE));
 
+        // 不使用機會卡按鈕
+        gamePanel.getSkipFunctionCardButton().addActionListener(e -> networkClient.send(Protocol.SKIP_FUNCTION_CARD));
+
         // 聊天
         gamePanel.getSendChatButton().addActionListener(e -> sendChat());
         gamePanel.getChatInput().addActionListener(e -> sendChat());

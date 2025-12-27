@@ -12,6 +12,8 @@ public class GameRoom {
     private int dealerIndex = 0;
     private int turnIndex = 0;
     private boolean gameInProgress = false;
+    private boolean functionCardPhase = false; // 是否在機會卡階段
+    private int functionCardTurnIndex = 0; // 機會卡階段當前輪到的玩家
 
     public GameRoom(ClientHandler creator, String roomId) {
         this.roomId = roomId;
@@ -194,6 +196,7 @@ public class GameRoom {
             p.setDealer(i == dealerIndex);
             p.getHand().add(deck.draw());
             p.getHand().add(deck.draw());
+            p.resetFunctionCardPhase(); // 重置機會卡階段狀態
         }
 
         // 發放功能牌（如果是第一局，玩家還沒有功能牌）
@@ -203,10 +206,12 @@ public class GameRoom {
         }
 
         broadcast(Protocol.MSG + Protocol.DELIMITER + "=== 新局開始，莊家是 " + players.get(dealerIndex).getName() + " ===");
-        turnIndex = (dealerIndex + 1) % players.size();
 
         sendStateToAll();
-        checkAndNotifyTurn();
+        sendFunctionCardsToAll();
+
+        // 進入機會卡階段
+        startFunctionCardPhase();
     }
 
     private void startPVE() {
@@ -612,23 +617,37 @@ public class GameRoom {
      * 處理功能牌使用請求
      */
     public void handleUseFunctionCard(ClientHandler handler, int cardId, String targetUid) {
-        // 遊戲進行中不能使用功能牌
-        if (gameInProgress) {
-            handler.send(Protocol.ERROR + Protocol.DELIMITER + "只能在回合開始前使用機會卡");
+        // 必須在機會卡階段
+        if (!functionCardPhase) {
+            handler.send(Protocol.ERROR + Protocol.DELIMITER + "目前不是機會卡使用階段");
             return;
         }
 
         // 找到使用者
         PlayerInfo user = null;
-        for (PlayerInfo p : players) {
-            if (p.getHandler() == handler) {
-                user = p;
+        int userIndex = -1;
+        for (int i = 0; i < players.size(); i++) {
+            if (players.get(i).getHandler() == handler) {
+                user = players.get(i);
+                userIndex = i;
                 break;
             }
         }
 
         if (user == null || user.isSpectator()) {
             handler.send(Protocol.ERROR + Protocol.DELIMITER + "無法使用機會卡");
+            return;
+        }
+
+        // 檢查是否輪到此玩家
+        if (userIndex != functionCardTurnIndex) {
+            handler.send(Protocol.ERROR + Protocol.DELIMITER + "還沒輪到你使用機會卡");
+            return;
+        }
+
+        // 檢查本輪是否已使用
+        if (user.hasUsedFunctionCardThisRound()) {
+            handler.send(Protocol.ERROR + Protocol.DELIMITER + "本輪已使用過機會卡");
             return;
         }
 
@@ -639,16 +658,57 @@ public class GameRoom {
             return;
         }
 
+        // 標記已使用
+        user.setUsedFunctionCardThisRound(true);
+        user.setConfirmedFunctionCardPhase(true);
+
         // 根據功能牌類型執行效果
         switch (card.getType()) {
             case MAKE_A_DEAL:
                 executeMakeADeal(user, targetUid);
                 break;
-            // 未來可以在此擴充更多功能牌類型
         }
 
         // 更新功能牌狀態
         sendFunctionCardsToAll();
+        sendStateToAll();
+
+        // 輪到下一位玩家
+        advanceFunctionCardPhase();
+    }
+
+    /**
+     * 處理跳過機會卡使用
+     */
+    public void handleSkipFunctionCard(ClientHandler handler) {
+        if (!functionCardPhase) {
+            handler.send(Protocol.ERROR + Protocol.DELIMITER + "目前不是機會卡使用階段");
+            return;
+        }
+
+        PlayerInfo user = null;
+        int userIndex = -1;
+        for (int i = 0; i < players.size(); i++) {
+            if (players.get(i).getHandler() == handler) {
+                user = players.get(i);
+                userIndex = i;
+                break;
+            }
+        }
+
+        if (user == null || user.isSpectator()) {
+            return;
+        }
+
+        if (userIndex != functionCardTurnIndex) {
+            handler.send(Protocol.ERROR + Protocol.DELIMITER + "還沒輪到你");
+            return;
+        }
+
+        user.setConfirmedFunctionCardPhase(true);
+        broadcast(Protocol.MSG + Protocol.DELIMITER + user.getName() + " 不使用機會卡");
+
+        advanceFunctionCardPhase();
     }
 
     /**
@@ -681,5 +741,84 @@ public class GameRoom {
                 + target.getName());
         broadcast(Protocol.MSG + Protocol.DELIMITER
                 + user.getName() + " 使用了「做個交易」與 " + target.getName() + " 互換手牌！");
+    }
+
+    // ==================== 機會卡階段控制 ====================
+
+    /**
+     * 開始機會卡階段
+     */
+    private void startFunctionCardPhase() {
+        // PVE 模式跳過機會卡階段
+        if (roomId == null) {
+            turnIndex = 0;
+            checkAndNotifyTurn();
+            return;
+        }
+
+        functionCardPhase = true;
+        functionCardTurnIndex = dealerIndex; // 從莊家開始
+
+        broadcast(Protocol.MSG + Protocol.DELIMITER + "=== 機會卡階段開始，可選擇使用一張機會卡或點「不使用」 ===");
+        notifyFunctionCardPhaseTurn();
+    }
+
+    /**
+     * 通知機會卡階段輪次
+     */
+    private void notifyFunctionCardPhaseTurn() {
+        PlayerInfo current = players.get(functionCardTurnIndex);
+
+        // 跳過旁觀者
+        if (current.isSpectator()) {
+            current.setConfirmedFunctionCardPhase(true);
+            advanceFunctionCardPhase();
+            return;
+        }
+
+        for (PlayerInfo p : players) {
+            if (p == current) {
+                p.send(Protocol.FUNCTION_CARD_PHASE + Protocol.DELIMITER + "YOUR");
+                p.send(Protocol.MSG + Protocol.DELIMITER + "輪到你選擇是否使用機會卡");
+            } else {
+                p.send(Protocol.FUNCTION_CARD_PHASE + Protocol.DELIMITER + "WAIT");
+                p.send(Protocol.MSG + Protocol.DELIMITER + "等待 " + current.getName() + " 選擇機會卡...");
+            }
+        }
+    }
+
+    /**
+     * 機會卡階段輪到下一人
+     */
+    private void advanceFunctionCardPhase() {
+        functionCardTurnIndex = (functionCardTurnIndex + 1) % players.size();
+
+        // 檢查是否繞回莊家（所有人都確認過了）
+        if (functionCardTurnIndex == dealerIndex) {
+            endFunctionCardPhase();
+            return;
+        }
+
+        // 跳過已確認的玩家
+        PlayerInfo next = players.get(functionCardTurnIndex);
+        if (next.hasConfirmedFunctionCardPhase() || next.isSpectator()) {
+            advanceFunctionCardPhase();
+            return;
+        }
+
+        notifyFunctionCardPhaseTurn();
+    }
+
+    /**
+     * 結束機會卡階段，進入玩家行動階段
+     */
+    private void endFunctionCardPhase() {
+        functionCardPhase = false;
+        broadcast(Protocol.FUNCTION_CARD_PHASE_END);
+        broadcast(Protocol.MSG + Protocol.DELIMITER + "=== 機會卡階段結束，開始遊戲行動 ===");
+
+        // 設定行動輪次，從莊家下一位開始
+        turnIndex = (dealerIndex + 1) % players.size();
+        checkAndNotifyTurn();
     }
 }

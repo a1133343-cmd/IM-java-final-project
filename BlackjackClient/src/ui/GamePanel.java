@@ -20,6 +20,7 @@ public class GamePanel extends JPanel {
     private final JButton standButton;
     private final JButton leaveButton;
     private final JPanel functionCardArea; // 功能牌區域
+    private final JButton skipFunctionCardButton; // 不使用機會卡按鈕
 
     // 狀態
     private String dealerTitleBase = "莊家區";
@@ -74,6 +75,13 @@ public class GamePanel extends JPanel {
         functionCardArea.setBackground(new Color(40, 40, 60));
         functionCardArea.setBorder(createTitledBorder("機會卡"));
         functionCardArea.setPreferredSize(new Dimension(0, 120));
+
+        // 不使用機會卡按鈕
+        skipFunctionCardButton = new JButton("不使用機會卡");
+        skipFunctionCardButton.setBackground(new Color(100, 100, 100));
+        skipFunctionCardButton.setForeground(Color.WHITE);
+        skipFunctionCardButton.setVisible(false);
+        functionCardArea.add(skipFunctionCardButton);
 
         leftPanel.add(listScroll, BorderLayout.CENTER);
         leftPanel.add(functionCardArea, BorderLayout.SOUTH);
@@ -180,6 +188,10 @@ public class GamePanel extends JPanel {
 
     public JButton getLeaveButton() {
         return leaveButton;
+    }
+
+    public JButton getSkipFunctionCardButton() {
+        return skipFunctionCardButton;
     }
 
     // ==================== UI 更新方法 ====================
@@ -306,10 +318,16 @@ public class GamePanel extends JPanel {
     }
 
     /**
-     * 清空功能牌區域
+     * 清空功能牌區域 (保留「不使用」按鈕)
      */
     public void clearFunctionCards() {
-        functionCardArea.removeAll();
+        // 移除功能牌面板，但保留 skip 按鈕
+        for (int i = functionCardArea.getComponentCount() - 1; i >= 0; i--) {
+            Component comp = functionCardArea.getComponent(i);
+            if (comp instanceof FunctionCardPanel) {
+                functionCardArea.remove(comp);
+            }
+        }
         functionCardArea.revalidate();
         functionCardArea.repaint();
     }
