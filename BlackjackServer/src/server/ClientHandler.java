@@ -94,7 +94,12 @@ public class ClientHandler implements Runnable {
 
             case Protocol.CHAT:
                 if (currentRoom != null && parts.length > 1) {
-                    currentRoom.broadcastChat(name, parts[1]);
+                    // 拼接所有訊息部分，避免 | 符號導致訊息被截斷
+                    StringBuilder message = new StringBuilder(parts[1]);
+                    for (int i = 2; i < parts.length; i++) {
+                        message.append("|").append(parts[i]);
+                    }
+                    currentRoom.broadcastChat(name, message.toString());
                 }
                 break;
 
