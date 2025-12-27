@@ -159,13 +159,25 @@ public class ClientHandler implements Runnable {
 
     private void joinRoom(String roomId) {
         GameRoom room = rooms.get(roomId);
-        if (room != null && !room.isFull()) {
-            room.addPlayer(this);
-            this.currentRoom = room;
-            send(Protocol.ROOM_JOINED + Protocol.DELIMITER + roomId);
-        } else {
-            send(Protocol.ERROR + Protocol.DELIMITER + "房間不存在或已滿");
+
+        if (room == null) {
+            send(Protocol.ERROR + Protocol.DELIMITER + "房間不存在");
+            return;
         }
+
+        if (room.isFull()) {
+            send(Protocol.ERROR + Protocol.DELIMITER + "房間已滿");
+            return;
+        }
+
+        if (room.hasPlayer(this.name)) {
+            send(Protocol.ERROR + Protocol.DELIMITER + "房間內已有相同名字的玩家");
+            return;
+        }
+
+        room.addPlayer(this);
+        this.currentRoom = room;
+        send(Protocol.ROOM_JOINED + Protocol.DELIMITER + roomId);
     }
 
     private void leaveRoom() {

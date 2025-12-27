@@ -38,6 +38,18 @@ public class GameRoom {
 
     // ==================== 玩家管理 ====================
 
+    /**
+     * 檢查房間內是否已有相同名字的玩家
+     */
+    public boolean hasPlayer(String name) {
+        for (PlayerInfo p : players) {
+            if (p.getName().equals(name)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public void addPlayer(ClientHandler handler) {
         if (!isFull()) {
             PlayerInfo newPlayer = new PlayerInfo(handler);
@@ -93,7 +105,6 @@ public class GameRoom {
         }
 
         // 記錄移除前的狀態
-        boolean wasDealer = removedPlayer.isDealer();
         boolean wasSpectator = removedPlayer.isSpectator();
         boolean wasCurrentTurn = (gameInProgress && !functionCardPhase && removeIndex == turnIndex);
         boolean wasFunctionCardTurn = (functionCardPhase && removeIndex == functionCardTurnIndex);
@@ -244,7 +255,6 @@ public class GameRoom {
         }
 
         // 找到下一個未確認的玩家
-        int startIndex = functionCardTurnIndex;
         int loopCount = 0;
         while (loopCount < players.size()) {
             PlayerInfo current = players.get(functionCardTurnIndex);
