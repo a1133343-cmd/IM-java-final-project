@@ -269,3 +269,516 @@ command/
 2. 在 `MessageHandlerRegistry.registerHandlers()` 中註冊
 3. 在 `Protocol.java` 新增協定常數（如有需要）
 
+---
+
+## 測試與驗證
+
+### 單元測試
+
+目前專案尚未建立正式的單元測試框架，但建議針對以下模組進行測試：
+
+**核心邏輯測試**：
+- `model/Hand.java`：測試 21 點計算、A 值轉換邏輯
+- `model/Deck.java`：測試洗牌、發牌功能
+- `model/FunctionCard.java`：測試功能牌效果
+
+**命令模式測試**：
+- 各個 `Command` 類別：測試命令執行結果
+- `CommandRegistry`：測試命令註冊與查找
+- 各個 `ServerMessageHandler`：測試訊息處理邏輯
+
+### 整合測試流程
+
+**PVE 模式測試**：
+```bash
+# 1. 啟動 Server
+cd BlackjackServer
+java -cp out Main
+
+# 2. 啟動 Client
+cd BlackjackClient  
+java -cp out Main
+
+# 3. 測試步驟
+- 登入
+- 選擇「單人練習」
+- 執行數回合遊戲
+- 驗證：點數計算、爆牌判定、勝負結果
+```
+
+**PVP 模式測試**：
+```bash
+# 1. 啟動 Server
+cd BlackjackServer
+java -cp out Main
+
+# 2. 啟動多個 Client（至少 3 個）
+cd BlackjackClient
+java -cp out Main  # 重複開啟 3 次
+
+# 3. 測試步驟
+- Client A 創建房間
+- Client B、C 加入房間
+- 測試場景：
+  ✓ 正常遊戲流程（發牌 → 機會卡 → 行動 → 結算）
+  ✓ 玩家中途離開
+  ✓ HP 歸零變為旁觀者
+  ✓ 勝利條件觸發
+  ✓ 莊家輪替
+  ✓ 功能牌使用
+```
+
+### 驗證清單
+
+執行以下檢查確保功能正常：
+
+- [ ] 伺服器啟動成功，監聽 Port 12345
+- [ ] 客戶端能夠連線到伺服器
+- [ ] 登入系統正常（UID 自動生成與儲存）
+- [ ] PVE 模式能夠正常開始遊戲
+- [ ] PVP 房間創建與加入功能正常
+- [ ] 遊戲中聊天功能正常（包含 `|` 符號）
+- [ ] 發牌功能正常（2 張牌給每位玩家）
+- [ ] 機會卡階段按順序執行
+- [ ] HIT/STAND 功能正常
+- [ ] 21 點計算正確（A 值自動調整）
+- [ ] 回合結算 HP 扣除正確
+- [ ] 莊家消極懲罰正確觸發
+- [ ] HP 歸零後轉為旁觀者
+- [ ] 旁觀者視角（上帝視角）顯示正確
+- [ ] 勝利條件正確判定
+- [ ] 玩家離開後遊戲流程正常
+- [ ] 功能牌使用效果正確
+- [ ] 中文字體顯示正常
+
+---
+
+## 調試技巧
+
+### 伺服器端調試
+
+**啟用詳細日誌**：
+```java
+// 在 ClientHandler.java 中加入調試訊息
+System.out.println("[DEBUG] 收到命令: " + command);
+System.out.println("[DEBUG] 玩家 " + player.getName() + " 狀態: " + player.getHp());
+```
+
+**追蹤房間狀態**：
+```java
+// 在 GameRoom.java 中輸出房間狀態
+System.out.println("[DEBUG] 房間 " + roomId + " 玩家數: " + players.size());
+System.out.println("[DEBUG] 當前輪次: " + currentPlayerIndex + "/" + players.size());
+```
+
+**網路層調試**：
+```java
+// 在 BlackjackServer.java 中追蹤連線
+System.out.println("[DEBUG] 新客戶端連線: " + socket.getInetAddress());
+```
+
+### 客戶端調試
+
+**GUI 狀態檢查**：
+```java
+// 在 GamePanel.java 中輸出狀態
+System.out.println("[DEBUG] 當前狀態: " + currentState);
+System.out.println("[DEBUG] 玩家手牌: " + playerHandArea.getText());
+```
+
+**訊息處理追蹤**：
+```java
+// 在 MessageHandler 中輸出收到的訊息
+System.out.println("[DEBUG] 收到伺服器訊息: " + message);
+```
+
+### 常用調試指令
+
+```bash
+# 監聽網路連線（Windows）
+netstat -ano | findstr :12345
+
+# 查看 Java 進程
+jps -l
+
+# 強制終止進程
+taskkill /F /PID <PID>
+```
+
+---
+
+## 常見問題與解法
+
+### 連線問題
+
+**問題：客戶端無法連線到伺服器**
+- **檢查**：確認伺服器已啟動並顯示「伺服器啟動於 Port 12345」
+- **檢查**：確認防火牆未阻擋 Port 12345
+- **檢查**：本機測試使用 `127.0.0.1`，區域網路測試使用伺服器的區網 IP
+- **解決**：執行 `netstat -ano | findstr :12345` 確認 Port 已被監聽
+
+**問題：連線後立即斷開**
+- **檢查**：客戶端與伺服器的 Protocol 版本是否一致
+- **檢查**：是否有未捕捉的例外導致線程終止
+- **解決**：查看伺服器與客戶端的錯誤輸出
+
+### 遊戲邏輯問題
+
+**問題：點數計算錯誤**
+- **檢查**：`Hand.java` 中的 `getValue()` 方法
+- **重點**：A 值應在 1 和 11 之間動態調整以避免爆牌
+- **測試**：建立包含 A 的手牌並驗證計算結果
+
+**問題：莊家第二張牌始終隱藏**
+- **檢查**：伺服器端是否在莊家行動時發送完整手牌
+- **檢查**：`STATE` 訊息中的 `dealerHand` 參數格式
+- **解決**：確保莊家輪次時 `dealerHand` 包含所有牌（非隱藏）
+
+**問題：機會牌按鈕無法點擊**
+- **檢查**：當前遊戲階段是否為「機會卡階段」
+- **檢查**：是否輪到該玩家使用機會卡
+- **檢查**：`FunctionCardPanel` 的 `setEnabled()` 狀態
+- **解決**：確保收到 `FUNC_CARD_PHASE|YOUR` 時啟用按鈕
+
+### UI 問題
+
+**問題：中文字體無法顯示（顯示為方塊）**
+- **原因**：預設字體不支援中文
+- **解決**：在 UI 元件中明確設定支援中文的字體
+```java
+Font chineseFont = new Font("Microsoft JhengHei", Font.PLAIN, 14);
+component.setFont(chineseFont);
+```
+
+**問題：視窗大小不足以顯示所有元件**
+- **檢查**：`setPreferredSize()` 是否設定正確
+- **解決**：調整面板大小或使用 `pack()` 自動調整
+
+### 編譯問題
+
+**問題：`javac` 編碼錯誤**
+```
+error: unmappable character for encoding MS950
+```
+- **解決**：加入 `-encoding UTF-8` 參數
+```bash
+javac -encoding UTF-8 -d out -sourcepath src src/Main.java ...
+```
+
+**問題：找不到類別**
+```
+Error: Could not find or load main class Main
+```
+- **解決**：確認編譯輸出目錄為 `out`，執行時使用 `-cp out`
+```bash
+java -cp out Main
+```
+
+---
+
+## 安全性考量
+
+### 輸入驗證
+
+**伺服器端必須驗證**：
+- 玩家暱稱長度限制（建議 2-20 字元）
+- 聊天訊息長度限制（建議最多 200 字元）
+- 房間 ID 格式驗證
+- 命令參數數量驗證
+
+**防止注入攻擊**：
+```java
+// 不安全：直接使用用戶輸入
+String message = parts[1]; // 可能包含惡意內容
+
+// 安全：驗證與過濾
+if (message.length() > 200) {
+    message = message.substring(0, 200);
+}
+// 移除潛在的控制字元
+message = message.replaceAll("[\\p{Cntrl}&&[^\r\n\t]]", "");
+```
+
+### 訊息分隔符號處理
+
+**重要**：聊天訊息可能包含 `|` 符號，必須特殊處理：
+```java
+// ChatCommand.java 中的正確處理方式
+if (parts.length < 2) {
+    return;
+}
+// 將除第一個參數外的所有部分重組為訊息
+StringBuilder msgBuilder = new StringBuilder();
+for (int i = 1; i < parts.length; i++) {
+    if (i > 1) msgBuilder.append("|");
+    msgBuilder.append(parts[i]);
+}
+String message = msgBuilder.toString();
+```
+
+### 資源管理
+
+**防止記憶體洩漏**：
+- 玩家離開時必須清理資源：
+  ```java
+  // 關閉 Socket
+  socket.close();
+  // 從房間移除玩家
+  room.removePlayer(player);
+  // 清除玩家引用
+  players.remove(uid);
+  ```
+
+**連線數量限制**：
+```java
+// 建議在 Server 中限制最大連線數
+private static final int MAX_CONNECTIONS = 100;
+private final Semaphore connectionLimit = new Semaphore(MAX_CONNECTIONS);
+
+// accept 前檢查
+if (!connectionLimit.tryAcquire()) {
+    socket.close();
+    continue;
+}
+```
+
+### 並發安全
+
+**共享資源必須同步**：
+```java
+// GameRoom.java 中的玩家列表
+private final List<Player> players = Collections.synchronizedList(new ArrayList<>());
+
+// 或使用明確的鎖
+private final Object lock = new Object();
+synchronized (lock) {
+    // 修改共享狀態
+}
+```
+
+---
+
+## 性能優化
+
+### 網路優化
+
+**批次發送訊息**：
+```java
+// 避免對每位玩家單獨發送
+for (Player p : players) {
+    p.send("STATE|...");  // ❌ 效率低
+}
+
+// 優先：準備好訊息後批次發送
+String stateMsg = buildStateMessage();
+broadcast(stateMsg);  // ✅ 一次性廣播
+```
+
+**減少不必要的狀態更新**：
+- 只在狀態實際改變時發送 `STATE` 訊息
+- 使用增量更新而非完整狀態
+
+### 記憶體優化
+
+**重用物件**：
+```java
+// Deck.java 中重用 Card 物件
+private static final List<Card> CARD_POOL = initializeCardPool();
+
+public void reset() {
+    cards.clear();
+    cards.addAll(CARD_POOL);
+    shuffle();
+}
+```
+
+**及時清理**：
+```java
+// 回合結束後清理手牌
+hand.clear();
+// 遊戲結束後清理房間
+rooms.remove(roomId);
+```
+
+### UI 性能
+
+**SwingUtilities.invokeLater 使用**：
+```java
+// 所有 UI 更新必須在 EDT 中執行
+SwingUtilities.invokeLater(() -> {
+    updateGameState(state);
+});
+```
+
+**減少重繪**：
+```java
+// 批次更新，減少重繪次數
+panel.setVisible(false);
+// ... 多個 UI 修改 ...
+panel.setVisible(true);
+panel.revalidate();
+panel.repaint();
+```
+
+---
+
+## 擴展建議
+
+### 新增功能牌
+
+1. 在 `FunctionCardType.java` 中新增類型：
+```java
+STEAL_CARD("偷取卡牌", "從對手抽一張牌"),
+DOUBLE_DOWN("雙倍下注", "本回合輸贏 HP 翻倍");
+```
+
+2. 在伺服器的功能牌處理邏輯中實作效果
+
+3. 在客戶端 `FunctionCardPanel` 中新增對應的 UI
+
+### 新增遊戲模式
+
+**可能的擴展方向**：
+- 計分模式（非 HP 制）
+- 錦標賽模式（多房間淘汰賽）
+- 觀戰模式（純觀看，不參與）
+- 排名系統（記錄勝場與積分）
+
+### 資料持久化
+
+**建議實作**：
+- 玩家統計資料保存（勝率、場次）
+- 歷史紀錄查詢
+- 排行榜系統
+
+**實作方式**：
+- 使用 JSON 檔案儲存（適合小型專案）
+- 使用 SQLite 資料庫（適合中型專案）
+- 使用 MySQL/PostgreSQL（適合大型專案）
+
+---
+
+## 開發環境建議
+
+### 推薦 IDE
+
+- **IntelliJ IDEA**（推薦）：強大的 Java 開發工具
+- **Eclipse**：輕量且免費
+- **VS Code** + Java Extension Pack：適合輕量開發
+
+### 推薦工具
+
+- **Git**：版本控制
+- **Postman**（選用）：測試 Socket 通訊
+- **JUnit**（計劃中）：單元測試框架
+- **Maven/Gradle**（未來考慮）：依賴管理與建構工具
+
+### 開發流程建議
+
+1. **功能開發**：
+   - 在專案根目錄建立功能分支：`git checkout -b feature/功能名稱`
+   - 實作並測試功能
+   - 提交變更：`git commit -m "描述"`
+
+2. **程式碼審查**：
+   - 檢查程式碼風格是否一致
+   - 驗證錯誤處理是否完善
+   - 確認註解清晰易懂
+
+3. **合併主分支**：
+   - 測試通過後合併到主分支
+   - 更新 `AGENTS.md`（如有架構變更）
+
+---
+
+## 附錄
+
+### 完整協定列表
+
+詳見 `protocol/Protocol.java`，以下為完整清單：
+
+**Client → Server**：
+- `LOGIN|uid|name` - 登入
+- `PVE_START` - 開始單人練習
+- `CREATE_ROOM` - 創建房間
+- `JOIN_ROOM|roomId` - 加入房間
+- `START` - 開始遊戲
+- `READY` - 確認戰績
+- `CHAT|message` - 聊天
+- `HIT` - 要牌
+- `STAND` - 停牌
+- `LEAVE` - 離開房間
+- `USE_FUNC_CARD|cardId|targetUid` - 使用功能牌
+- `SKIP_FUNC_CARD` - 跳過功能牌
+
+**Server → Client**：
+- `LOGIN_OK` - 登入成功
+- `PVE_STARTED` - PVE 開始
+- `ROOM_CREATED|roomId` - 房間已創建
+- `ROOM_JOINED|roomId|playersInfo` - 加入房間成功
+- `STATE|status|dealerHand|playerHand|playerList` - 遊戲狀態
+- `TURN|YOUR/WAIT` - 輪次通知
+- `GAME_OVER|dealerHand|playerHand|result` - 回合結束
+- `HP_UPDATE|hp` - HP 更新
+- `MSG|message` - 系統訊息
+- `LOBBY` - 返回大廳
+- `ERROR|message` - 錯誤訊息
+- `GAME_WIN|winnerName` - 遊戲勝利
+- `ROUND_CANCEL|reason` - 回合取消
+- `FUNC_CARDS|id,type;id,type;...` - 功能牌列表
+- `FUNC_CARD_USED|userName|cardType|targetName` - 功能牌使用通知
+- `FUNC_CARD_PHASE|YOUR/WAIT` - 機會卡階段
+- `FUNC_PHASE_END` - 機會卡階段結束
+
+### 資料模型
+
+**Card（卡牌）**：
+- `suit`：花色（♠ ♥ ♦ ♣）
+- `rank`：點數（A, 2-10, J, Q, K）
+- `value`：數值（A=1/11, J/Q/K=10）
+
+**Hand（手牌）**：
+- `cards`：卡牌列表
+- `getValue()`：計算總點數（自動處理 A 值）
+- `isBust()`：是否爆牌（點數 > 21）
+
+**FunctionCard（功能牌）**：
+- `id`：唯一識別碼
+- `type`：功能牌類型（`FunctionCardType`）
+
+**Player（玩家，伺服器端）**：
+- `uid`：唯一識別碼
+- `name`：暱稱
+- `hp`：血量
+- `hand`：當前手牌
+- `isSpectator`：是否為旁觀者
+- `functionCards`：擁有的功能牌
+
+### 錯誤碼定義
+
+目前使用文字錯誤訊息，未來可考慮定義錯誤碼：
+
+```java
+// 建議的錯誤碼系統
+public enum ErrorCode {
+    E001("房間已滿"),
+    E002("房間不存在"),
+    E003("非法操作"),
+    E004("未輪到您"),
+    E005("暱稱重複");
+    
+    private final String message;
+    ErrorCode(String message) {
+        this.message = message;
+    }
+}
+```
+
+---
+
+## 聯絡資訊
+
+如需協助或回報問題，請聯絡開發團隊或提交 Issue。
+
+**最後更新**：2025-12-28
+
