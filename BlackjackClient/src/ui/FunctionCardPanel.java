@@ -17,6 +17,10 @@ public class FunctionCardPanel extends JPanel {
         switch (type) {
             case "MAKE_A_DEAL":
                 return "做個交易";
+            case "FORCE_DRAW":
+                return "我叫你抽";
+            case "HEAL_ONE_HP":
+                return "我喝一口";
             default:
                 return type;
         }
@@ -26,6 +30,10 @@ public class FunctionCardPanel extends JPanel {
         switch (type) {
             case "MAKE_A_DEAL":
                 return "與一位玩家互換手牌";
+            case "FORCE_DRAW":
+                return "強迫所有玩家抽一張牌";
+            case "HEAL_ONE_HP":
+                return "回一滴血";
             default:
                 return "";
         }

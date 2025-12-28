@@ -139,7 +139,7 @@ PVP 模式分為兩個層級：**一場遊戲（Game）** 與 **一回合（Roun
 
 ### 功能牌（機會卡）
 
-- **發牌時機**：第一場遊戲開始時，每位玩家獲得 3 張功能牌
+- **發牌時機**：第一場遊戲開始時，每位玩家獲得 3 張功能牌（隨機分配類型）
 - **使用時機**：只能在機會卡階段使用（莊家點擊「開始遊戲」後，進入機會卡階段時）
 - **按鈕狀態管理**：
   - 遊戲進行中（發牌階段、玩家行動階段）：機會牌按鈕禁用
@@ -148,7 +148,13 @@ PVP 模式分為兩個層級：**一場遊戲（Game）** 與 **一回合（Roun
   - 機會卡階段但未輪到自己時：機會牌按鈕禁用
 - **PVE 模式**：不發放功能牌
 - **目前功能牌**：
-  - **做個交易**：與一位玩家互換手牌
+  - **做個交易**：與一位玩家互換手牌（需選擇目標）
+  - **我叫你抽**：強迫所有玩家抽一張牌（若有人爆牌，在 21 點遊戲前僅通知不扣血）
+  - **我喝一口**：回復 1 HP（允許 HP 超過 15）
+- **架構説明**：採用策略模式 (Strategy Pattern)，效果类別位於 `game/` 目錄：
+  - `FunctionCardEffect.java`：策略介面
+  - `FunctionCardEffectRegistry.java`：效果註冊表
+  - `MakeADealEffect.java`、`ForceDrawEffect.java`、`HealOneHpEffect.java`：各效果實作
 
 
 ### 旁觀者模式
@@ -216,9 +222,18 @@ command/
 ├── ChatCommand.java          # 聊天命令
 ├── HitCommand.java           # 要牌命令
 ├── StandCommand.java         # 停牌命令
-├── UseFunctionCardCommand.java   # 使用功能牌命令
-└── SkipFunctionCardCommand.java  # 跳過功能牌命令
+├── SkipFunctionCardCommand.java  # 跳過功能牌命令
+└── UseFunctionCardCommand.java   # 使用功能牌命令
 ```
+
+**機會牌效果類別**：
+```
+game/
+├── FunctionCardEffect.java        # 效果策略介面
+├── FunctionCardEffectRegistry.java# 效果註冊表
+├── MakeADealEffect.java           # 「做個交易」效果
+├── ForceDrawEffect.java           # 「我叫你抽」效果
+└── HealOneHpEffect.java           # 「我喝一口」效果
 
 **核心類別**：
 - `Command`：定義 `execute(CommandContext context)` 方法
@@ -782,5 +797,5 @@ public enum ErrorCode {
 
 ---
 
-**當前版本**：v0.0.1  
+**當前版本**：v0.1.1  
 **最後更新**：2025-12-28

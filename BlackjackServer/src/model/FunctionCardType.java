@@ -3,7 +3,9 @@
  * 定義所有機會牌的種類與描述
  */
 public enum FunctionCardType {
-    MAKE_A_DEAL("做個交易", "與一位玩家互換手牌");
+    MAKE_A_DEAL("做個交易", "與一位玩家互換手牌"),
+    FORCE_DRAW("我叫你抽", "強迫所有玩家抽一張牌"),
+    HEAL_ONE_HP("我喝一口", "回一滴血");
 
     private final String displayName;
     private final String description;

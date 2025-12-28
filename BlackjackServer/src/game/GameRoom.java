@@ -810,10 +810,20 @@ public class GameRoom {
         broadcast(Protocol.CHAT + Protocol.DELIMITER + sender + ": " + message);
     }
 
-    private void broadcast(String message) {
+    public void broadcast(String message) {
         for (PlayerInfo p : players) {
             p.send(message);
         }
+    }
+
+    /**
+     * 從牌堆抽一張牌（供效果類別使用）
+     */
+    public Card drawCard() {
+        if (deck != null) {
+            return deck.draw();
+        }
+        return null;
     }
 
     private String getHpString() {
@@ -917,10 +927,12 @@ public class GameRoom {
      * 給單一玩家發機會牌
      */
     private void dealFunctionCardsToPlayer(PlayerInfo player) {
-        // 發 3 張機會牌
+        // 發 3 張機會牌，隨機分配類型
+        FunctionCardType[] types = FunctionCardType.values();
+        java.util.Random random = new java.util.Random();
         for (int i = 0; i < 3; i++) {
-            // 目前只有一種機會牌，未來可以隨機或從牌堆抽
-            player.addFunctionCard(new FunctionCard(FunctionCardType.MAKE_A_DEAL));
+            FunctionCardType type = types[random.nextInt(types.length)];
+            player.addFunctionCard(new FunctionCard(type));
         }
     }
 
@@ -990,11 +1002,12 @@ public class GameRoom {
         user.setUsedFunctionCardThisRound(true);
         user.setConfirmedFunctionCardPhase(true);
 
-        // 根據機會牌類型執行效果
-        switch (card.getType()) {
-            case MAKE_A_DEAL:
-                executeMakeADeal(user, targetUid);
-                break;
+        // 根據機會牌類型執行效果（使用策略模式）
+        FunctionCardEffect effect = FunctionCardEffectRegistry.getEffect(card.getType());
+        if (effect != null) {
+            effect.execute(this, user, targetUid, players);
+        } else {
+            handler.send(Protocol.ERROR + Protocol.DELIMITER + "未知的機會卡效果");
         }
 
         // 更新機會牌狀態
@@ -1039,37 +1052,7 @@ public class GameRoom {
         advanceFunctionCardPhase();
     }
 
-    /**
-     * 執行「做個交易」效果：與目標玩家互換手牌
-     */
-    private void executeMakeADeal(PlayerInfo user, String targetUid) {
-        // 找到目標玩家（支援 UID 或名稱匹配）
-        PlayerInfo target = null;
-        for (PlayerInfo p : players) {
-            if (p != user && (p.getUid().equals(targetUid) || p.getName().equals(targetUid))) {
-                target = p;
-                break;
-            }
-        }
-
-        if (target == null || target.isSpectator()) {
-            user.send(Protocol.ERROR + Protocol.DELIMITER + "無效的目標玩家");
-            return;
-        }
-
-        // 交換手牌
-        Hand tempHand = user.getHand();
-        user.setHand(target.getHand());
-        target.setHand(tempHand);
-
-        // 廣播通知
-        broadcast(Protocol.FUNCTION_CARD_USED + Protocol.DELIMITER
-                + user.getName() + Protocol.DELIMITER
-                + "做個交易" + Protocol.DELIMITER
-                + target.getName());
-        broadcast(Protocol.MSG + Protocol.DELIMITER
-                + user.getName() + " 使用了「做個交易」與 " + target.getName() + " 互換手牌！");
-    }
+    // executeMakeADeal 已遷移至 MakeADealEffect 類別
 
     // ==================== 機會卡階段控制 ====================
 
