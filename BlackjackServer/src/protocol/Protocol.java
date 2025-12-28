@@ -30,6 +30,7 @@ public final class Protocol {
     public static final String LOBBY = "LOBBY";
     public static final String ERROR = "ERROR";
     public static final String GAME_WIN = "GAME_WIN"; // Server: GAME_WIN|winnerName
+    public static final String ROUND_CANCEL = "ROUND_CANCEL"; // Server: ROUND_CANCEL|reason
 
     // === 功能牌相關 ===
     public static final String USE_FUNCTION_CARD = "USE_FUNC_CARD"; // Client: USE_FUNC_CARD|cardId|targetUid

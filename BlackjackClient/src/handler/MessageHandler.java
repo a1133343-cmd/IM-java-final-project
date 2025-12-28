@@ -167,6 +167,19 @@ public class MessageHandler {
                     }
                     break;
 
+                case Protocol.ROUND_CANCEL:
+                    // 回合取消通知（莊家離開）
+                    if (parts.length > 1) {
+                        JOptionPane.showMessageDialog(client, parts[1], "回合取消", JOptionPane.WARNING_MESSAGE);
+                    }
+                    client.getGamePanel().getStatusLabel().setText("回合取消，等待新一局開始...");
+                    client.getGamePanel().getStatusLabel().setForeground(Color.ORANGE);
+                    client.getGamePanel().lockButtons();
+                    client.getGamePanel().setFunctionCardsEnabled(false);
+                    client.getGamePanel().getSkipFunctionCardButton().setVisible(false);
+                    client.checkStartButtonVisibility();
+                    break;
+
                 case Protocol.ERROR:
                     JOptionPane.showMessageDialog(client, parts[1]);
                     break;

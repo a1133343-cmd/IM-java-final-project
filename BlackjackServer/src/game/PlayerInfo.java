@@ -12,6 +12,7 @@ public class PlayerInfo {
     private boolean hasStayed;
     private boolean isReady;
     private boolean isSpectator;
+    private boolean joinedMidGame = false; // 是否為中途加入的旁觀者（需等場結束才恢復）
     private List<FunctionCard> functionCards = new ArrayList<>();
     private boolean usedFunctionCardThisRound = false; // 本輪是否已使用機會卡
     private boolean confirmedFunctionCardPhase = false; // 是否已確認機會卡階段
@@ -108,6 +109,20 @@ public class PlayerInfo {
      */
     public void setSpectator(boolean spectator) {
         this.isSpectator = spectator;
+    }
+
+    /**
+     * 是否為中途加入的旁觀者（需等場結束才恢復）
+     */
+    public boolean isJoinedMidGame() {
+        return joinedMidGame;
+    }
+
+    /**
+     * 設定是否為中途加入的旁觀者
+     */
+    public void setJoinedMidGame(boolean joinedMidGame) {
+        this.joinedMidGame = joinedMidGame;
     }
 
     /**

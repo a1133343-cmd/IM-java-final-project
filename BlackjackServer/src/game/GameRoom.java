@@ -56,13 +56,14 @@ public class GameRoom {
         if (!isFull()) {
             PlayerInfo newPlayer = new PlayerInfo(handler);
 
-            // 如果遊戲正在進行中，設定為旁觀者
+            // 如果遊戲正在進行中，設定為旁觀者（需等這場結束才恢復）
             if (gameInProgress) {
                 newPlayer.setSpectator(true);
+                newPlayer.setJoinedMidGame(true); // 標記為中途加入，需等場結束才恢復
                 players.add(newPlayer);
                 broadcast(Protocol.MSG + Protocol.DELIMITER + "玩家 " + handler.getName() + " 以旁觀者身份加入 (" + players.size()
                         + "/5)");
-                handler.send(Protocol.MSG + Protocol.DELIMITER + "遊戲進行中，你將以旁觀者身份觀看，下一局開始後才能參與");
+                handler.send(Protocol.MSG + Protocol.DELIMITER + "遊戲進行中，你將以旁觀者身份觀看，這場結束後才能參與");
                 // 發送當前遊戲狀態給旁觀者
                 sendStateToAll();
             } else {
@@ -108,6 +109,7 @@ public class GameRoom {
 
         // 記錄移除前的狀態
         boolean wasSpectator = removedPlayer.isSpectator();
+        boolean wasDealer = removedPlayer.isDealer();
         boolean wasCurrentTurn = (gameInProgress && !functionCardPhase && removeIndex == turnIndex);
         boolean wasFunctionCardTurn = (functionCardPhase && removeIndex == functionCardTurnIndex);
 
@@ -140,8 +142,6 @@ public class GameRoom {
             if (removeIndex < turnIndex) {
                 turnIndex--;
             } else if (removeIndex == turnIndex) {
-                // 當前回合玩家離開，turnIndex 保持（指向原下一位）
-                // 但需要檢查範圍
                 if (turnIndex >= players.size()) {
                     turnIndex = 0;
                 }
@@ -156,7 +156,6 @@ public class GameRoom {
             if (removeIndex < functionCardTurnIndex) {
                 functionCardTurnIndex--;
             } else if (removeIndex == functionCardTurnIndex) {
-                // 當前機會卡回合玩家離開
                 if (functionCardTurnIndex >= players.size()) {
                     functionCardTurnIndex = 0;
                 }
@@ -183,30 +182,93 @@ public class GameRoom {
                 }
             }
 
-            if (activeCount < 1) {
-                // 沒有活躍玩家了，結束遊戲
+            // === 莊家離開：取消本回合，不計分 ===
+            if (wasDealer && !wasSpectator) {
+                cancelRoundDueToDealerLeave();
+                return;
+            }
+
+            // === 只剩旁觀者：靜默結束這場遊戲 ===
+            if (activeCount == 0) {
                 gameInProgress = false;
                 functionCardPhase = false;
-                broadcast(Protocol.MSG + Protocol.DELIMITER + "人數不足，遊戲結束");
-            } else if (activeCount == 1 && roomId != null) {
-                // 只剩一人，判定勝利
+                // 重置所有玩家狀態（不顯示勝利通知）
+                resetAllPlayersForNewGame();
+                broadcast(Protocol.MSG + Protocol.DELIMITER + "所有活躍玩家已離開，遊戲結束");
+                return;
+            }
+
+            // === 只剩一名活躍玩家：判定勝利 ===
+            if (activeCount == 1 && roomId != null) {
                 gameInProgress = false;
                 functionCardPhase = false;
                 handleSinglePlayerVictory();
+                return;
+            }
+
+            // === 還有多人，繼續遊戲 ===
+            if (wasFunctionCardTurn && !wasSpectator) {
+                advanceFunctionCardPhaseAfterLeave();
+            } else if (wasCurrentTurn && !wasSpectator) {
+                checkAndNotifyTurn();
             } else {
-                // 還有多人，繼續遊戲
-                if (wasFunctionCardTurn && !wasSpectator) {
-                    // 機會卡階段被移除的玩家是當前輪次，需要推進
-                    advanceFunctionCardPhaseAfterLeave();
-                } else if (wasCurrentTurn && !wasSpectator) {
-                    // 遊戲行動階段被移除的玩家是當前輪次
-                    checkAndNotifyTurn();
-                } else {
-                    // 只更新狀態
-                    sendStateToAll();
-                }
+                sendStateToAll();
             }
         }
+    }
+
+    /**
+     * 莊家離開導致回合取消（不計分）
+     */
+    private void cancelRoundDueToDealerLeave() {
+        gameInProgress = false;
+        functionCardPhase = false;
+
+        // 廣播回合取消通知
+        broadcast(Protocol.ROUND_CANCEL + Protocol.DELIMITER + "莊家離開，本回合取消");
+        broadcast(Protocol.MSG + Protocol.DELIMITER + "⚠️ 莊家離開，本回合取消，不計分");
+
+        // 重置所有非旁觀者的手牌狀態（回合取消不扣血）
+        for (PlayerInfo p : players) {
+            if (!p.isSpectator()) {
+                p.resetHand();
+                p.setReady(true); // 準備下一回合
+            }
+        }
+
+        // 設定新莊家（第一個非旁觀者）
+        for (int i = 0; i < players.size(); i++) {
+            if (!players.get(i).isSpectator()) {
+                dealerIndex = i;
+                break;
+            }
+        }
+        for (int i = 0; i < players.size(); i++) {
+            players.get(i).setDealer(i == dealerIndex);
+        }
+
+        broadcast(Protocol.HP_UPDATE + Protocol.DELIMITER + getHpString());
+        broadcast(Protocol.MSG + Protocol.DELIMITER + "新莊家是 " + players.get(dealerIndex).getName() + "，可開始下一局");
+    }
+
+    /**
+     * 重置所有玩家狀態準備新遊戲（用於無勝利提示的場結束情況）
+     */
+    private void resetAllPlayersForNewGame() {
+        for (PlayerInfo p : players) {
+            p.setSpectator(false);
+            p.setJoinedMidGame(false);
+            p.setHp(15);
+            p.setReady(true);
+            p.clearFunctionCards();
+        }
+
+        dealerIndex = 0;
+        if (!players.isEmpty()) {
+            players.get(0).setDealer(true);
+        }
+
+        broadcast(Protocol.HP_UPDATE + Protocol.DELIMITER + getHpString());
     }
 
     /**
@@ -225,9 +287,10 @@ public class GameRoom {
             broadcast(Protocol.GAME_WIN + Protocol.DELIMITER + winner.getName());
             broadcast(Protocol.MSG + Protocol.DELIMITER + "🎉 遊戲結束！" + winner.getName() + " 獲得勝利！");
 
-            // 重置所有玩家狀態，準備新遊戲
+            // 重置所有玩家狀態，準備新遊戲（場結束）
             for (PlayerInfo p : players) {
                 p.setSpectator(false);
+                p.setJoinedMidGame(false); // 場結束，重置中途加入標記
                 p.setHp(15);
                 p.setReady(true);
                 p.clearFunctionCards();
@@ -655,8 +718,9 @@ public class GameRoom {
 
         for (PlayerInfo p : players) {
             p.setReady(false);
-            // 將旁觀者轉為正常玩家，讓他們可以參與下一局
-            if (p.isSpectator()) {
+            // 只恢復因 HP 歸零的旁觀者（非中途加入者）
+            // 中途加入的旁觀者需等到場結束才恢復
+            if (p.isSpectator() && !p.isJoinedMidGame()) {
                 p.setSpectator(false);
                 p.send(Protocol.MSG + Protocol.DELIMITER + "下一局你將可以參與遊戲");
             }
@@ -721,9 +785,10 @@ public class GameRoom {
             broadcast(Protocol.MSG + Protocol.DELIMITER + "所有玩家同時被淘汰，平局！HP 已重置。");
         }
 
-        // 重置所有玩家狀態，準備新遊戲
+        // 重置所有玩家狀態，準備新遊戲（場結束）
         for (PlayerInfo p : players) {
             p.setSpectator(false);
+            p.setJoinedMidGame(false); // 場結束，重置中途加入標記
             p.setHp(15);
             p.setReady(true);
             p.clearFunctionCards();
