@@ -19,7 +19,7 @@ public class PlayerInfo {
 
     public PlayerInfo(ClientHandler handler) {
         this.handler = handler;
-        this.hp = 15;
+        this.hp = 10;
         this.hand = new Hand();
         this.isDealer = false;
         this.hasStayed = false;
